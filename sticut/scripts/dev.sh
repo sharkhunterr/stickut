@@ -37,6 +37,17 @@ if [[ ! -x "$ROOT/frontend/node_modules/.bin/vite" ]]; then
   exit 1
 fi
 
+# Bind à 0.0.0.0 par défaut → accessible depuis le LAN.
+# Pour rester en local-only :  STICKUT_DEV_HOST=127.0.0.1 scripts/dev.sh
+HOST_BIND="${STICKUT_DEV_HOST:-0.0.0.0}"
+
+# Détecte les IPs LAN à afficher (IPv4 hors loopback / docker bridges).
+mapfile -t LAN_IPS < <(
+  ip -4 -o addr show 2>/dev/null \
+    | awk '$2 !~ /^(lo|docker|br-|veth|tun|tap)/ {print $4}' \
+    | cut -d/ -f1
+)
+
 # ---------- subprocesses ---------------------------------------------------
 LOG_DIR="$ROOT/.dev-logs"
 mkdir -p "$LOG_DIR"
@@ -56,19 +67,19 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-echo "──▶ Backend (uvicorn --reload) sur 127.0.0.1:8000  → $BACK_LOG"
+echo "──▶ Backend (uvicorn --reload) sur $HOST_BIND:8000  → $BACK_LOG"
 (
   cd "$ROOT/backend"
   exec "$VENV/bin/uvicorn" app.main:app \
-    --host 127.0.0.1 --port 8000 --reload \
+    --host "$HOST_BIND" --port 8000 --reload \
     >> "$BACK_LOG" 2>&1
 ) &
 BACK_PID=$!
 
-echo "──▶ Frontend (vite HMR) sur 127.0.0.1:5173        → $FRONT_LOG"
+echo "──▶ Frontend (vite HMR) sur $HOST_BIND:5173        → $FRONT_LOG"
 (
   cd "$ROOT/frontend"
-  exec ./node_modules/.bin/vite --host 127.0.0.1 --port 5173 \
+  exec ./node_modules/.bin/vite --host "$HOST_BIND" --port 5173 \
     >> "$FRONT_LOG" 2>&1
 ) &
 FRONT_PID=$!
@@ -76,8 +87,12 @@ FRONT_PID=$!
 sleep 2
 echo
 echo "✅ Stickut en marche :"
-echo "    UI   → http://127.0.0.1:5173/"
-echo "    API  → http://127.0.0.1:8000/api/docs"
+echo "    UI    local  → http://127.0.0.1:5173/"
+for ip in "${LAN_IPS[@]}"; do
+  [[ "$ip" == "127.0.0.1" ]] && continue
+  echo "    UI    LAN    → http://$ip:5173/"
+done
+echo "    API   docs   → http://127.0.0.1:8000/api/docs"
 echo
 echo "Logs en continu (Ctrl-C pour quitter) :"
 echo
