@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:stickut="https://stickut.local/ns"
+     viewBox="0 0 210 297" width="210mm" height="297mm">
+  <metadata>
+    <stickut:meta>
+      <stickut:name>Festons</stickut:name>
+      <stickut:sticker-area x="20" y="35" width="170" height="240"/>
+    </stickut:meta>
+  </metadata>
+
+  <text data-stickut="header-text"
+        x="105" y="22" text-anchor="middle"
+        font-family="Georgia, serif" font-size="11"
+        font-weight="700"
+        fill="#1f2933">Mes stickers</text>
+
+  <!-- Scalloped frame: chained semicircles around the edge. Drawn as 4 paths. -->
+  <g data-stickut="frame-color" fill="none" stroke="#1f2933" stroke-width="1.2" stroke-linejoin="round">
+    <!-- Top -->
+    <path d="M 10 30
+             q 5 -10 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0
+             t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0
+             t 10 0 t 10 0 t 10 0 t 10 0 t 10 0"/>
+    <!-- Bottom -->
+    <path d="M 10 282
+             q 5 10 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0
+             t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0 t 10 0
+             t 10 0 t 10 0 t 10 0 t 10 0 t 10 0"/>
+    <!-- Left -->
+    <path d="M 12 30
+             q -10 5 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10
+             t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10
+             t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10"/>
+    <!-- Right -->
+    <path d="M 198 30
+             q 10 5 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10
+             t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10
+             t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10 t 0 10"/>
+  </g>
+  <g data-stickut="frame-color" fill="#1f2933">
+    <!-- Corner dots -->
+    <circle cx="12" cy="30" r="1.5"/>
+    <circle cx="198" cy="30" r="1.5"/>
+    <circle cx="12" cy="282" r="1.5"/>
+    <circle cx="198" cy="282" r="1.5"/>
+  </g>
+</svg>

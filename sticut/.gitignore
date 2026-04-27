@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+
+# Node / Vite / TS
+node_modules/
+frontend/dist/
+backend/static/
+*.tsbuildinfo
+*.log
+
+# Stickut runtime data (mounted volumes)
+cache/
+tmp/
+models/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.tmp

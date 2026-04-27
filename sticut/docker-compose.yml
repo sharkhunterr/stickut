@@ -1,0 +1,21 @@
+services:
+  stickut:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stickut:1.0.0
+    container_name: stickut
+    restart: unless-stopped
+    ports:
+      - "${STICKUT_PORT:-8000}:8000"
+    environment:
+      - STICKUT_MAX_FILE_SIZE_MB=${STICKUT_MAX_FILE_SIZE_MB:-20}
+      - STICKUT_MAX_FILES_PER_SESSION=${STICKUT_MAX_FILES_PER_SESSION:-50}
+      - STICKUT_DEFAULT_MODEL=${STICKUT_DEFAULT_MODEL:-birefnet-general}
+      - STICKUT_REMBG_WORKERS=${STICKUT_REMBG_WORKERS:-2}
+      - STICKUT_TMP_TTL_SECONDS=${STICKUT_TMP_TTL_SECONDS:-3600}
+      - STICKUT_BEHIND_PROXY=${STICKUT_BEHIND_PROXY:-false}
+    volumes:
+      - ./templates:/app/templates
+      - ./cache:/app/cache
+      - ./tmp:/app/tmp

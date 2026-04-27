@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:stickut="https://stickut.local/ns"
+     viewBox="0 0 210 297" width="210mm" height="297mm">
+  <metadata>
+    <stickut:meta>
+      <stickut:name>Guirlande de fanions</stickut:name>
+      <stickut:sticker-area x="20" y="40" width="170" height="235"/>
+    </stickut:meta>
+  </metadata>
+
+  <text data-stickut="header-text"
+        x="105" y="22" text-anchor="middle"
+        font-family="Georgia, serif" font-size="11"
+        font-weight="700"
+        fill="#1f2933">Mes stickers</text>
+
+  <g data-stickut="frame-color" fill="#1f2933" stroke="#1f2933" stroke-width="0.8">
+    <!-- Top bunting: triangular flags hanging from a curved string -->
+    <path d="M 8 28 q 100 12 194 0" fill="none"/>
+    <g fill="#1f2933" stroke="none">
+      <polygon points="14,28 22,28 18,36"/>
+      <polygon points="32,30 40,30 36,38"/>
+      <polygon points="50,32 58,32 54,40"/>
+      <polygon points="68,33 76,33 72,41"/>
+      <polygon points="86,33 94,33 90,41"/>
+      <polygon points="104,33 112,33 108,41"/>
+      <polygon points="122,33 130,33 126,41"/>
+      <polygon points="140,32 148,32 144,40"/>
+      <polygon points="158,30 166,30 162,38"/>
+      <polygon points="176,28 184,28 180,36"/>
+    </g>
+    <!-- Bottom bunting: same idea, mirrored -->
+    <path d="M 8 280 q 100 -12 194 0" fill="none"/>
+    <g fill="#1f2933" stroke="none">
+      <polygon points="14,280 22,280 18,272"/>
+      <polygon points="32,278 40,278 36,270"/>
+      <polygon points="50,276 58,276 54,268"/>
+      <polygon points="68,275 76,275 72,267"/>
+      <polygon points="86,275 94,275 90,267"/>
+      <polygon points="104,275 112,275 108,267"/>
+      <polygon points="122,275 130,275 126,267"/>
+      <polygon points="140,276 148,276 144,268"/>
+      <polygon points="158,278 166,278 162,270"/>
+      <polygon points="176,280 184,280 180,272"/>
+    </g>
+    <!-- Left side dots -->
+    <g fill="#1f2933" stroke="none">
+      <circle cx="10" cy="60" r="1.6"/>
+      <circle cx="10" cy="100" r="1.6"/>
+      <circle cx="10" cy="140" r="1.6"/>
+      <circle cx="10" cy="180" r="1.6"/>
+      <circle cx="10" cy="220" r="1.6"/>
+      <circle cx="10" cy="260" r="1.6"/>
+      <circle cx="200" cy="60" r="1.6"/>
+      <circle cx="200" cy="100" r="1.6"/>
+      <circle cx="200" cy="140" r="1.6"/>
+      <circle cx="200" cy="180" r="1.6"/>
+      <circle cx="200" cy="220" r="1.6"/>
+      <circle cx="200" cy="260" r="1.6"/>
+    </g>
+  </g>
+</svg>

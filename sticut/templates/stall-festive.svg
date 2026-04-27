@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:stickut="https://stickut.local/ns"
+     viewBox="0 0 210 297" width="210mm" height="297mm">
+  <metadata>
+    <stickut:meta>
+      <stickut:name>Stand de fête</stickut:name>
+      <stickut:sticker-area x="25" y="50" width="160" height="220"/>
+    </stickut:meta>
+  </metadata>
+
+  <text data-stickut="header-text"
+        x="105" y="32" text-anchor="middle"
+        font-family="Georgia, serif" font-size="13"
+        font-weight="700"
+        fill="#1f2933">Anniversaire</text>
+
+  <g data-stickut="frame-color" fill="#1f2933">
+    <!-- Festive top awning: scalloped band -->
+    <path d="M 25 12 h 160 v 8
+             q -8 0 -8 6 q 0 -6 -8 -6 q -8 0 -8 6 q 0 -6 -8 -6
+             q -8 0 -8 6 q 0 -6 -8 -6 q -8 0 -8 6 q 0 -6 -8 -6
+             q -8 0 -8 6 q 0 -6 -8 -6 q -8 0 -8 6 q 0 -6 -8 -6
+             q -8 0 -8 6 q 0 -6 -8 -6 q -8 0 -8 6 q 0 -6 -8 -6
+             q -8 0 -8 6 q 0 -6 -8 -6
+             v -8 z"/>
+    <!-- Side stripes (left) -->
+    <rect x="10" y="40" width="6" height="220"/>
+    <rect x="20" y="40" width="2" height="220"/>
+    <!-- Side stripes (right) -->
+    <rect x="194" y="40" width="6" height="220"/>
+    <rect x="188" y="40" width="2" height="220"/>
+    <!-- Bottom scallop -->
+    <path d="M 10 275
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6 q 7 0 7 6 q 0 -6 7 -6
+             q 7 0 7 6 q 0 -6 7 -6
+             h 0 v 16 h -190 z"/>
+  </g>
+</svg>
