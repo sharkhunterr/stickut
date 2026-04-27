@@ -1,0 +1,311 @@
+openapi: 3.1.0
+info:
+  title: Stickut API
+  version: "1.0.0"
+  description: |
+    REST API for Stickut V1 — generates A4 sticker sheets ready for Cricut
+    Print Then Cut. Auth is delegated to the upstream reverse proxy
+    (Authentik). All error bodies follow `{ "detail": "<message FR>" }`.
+
+servers:
+  - url: /
+    description: Same-origin (FastAPI serves the SPA and the API)
+
+tags:
+  - name: upload
+  - name: process
+  - name: cutout
+  - name: templates
+  - name: health
+
+paths:
+  /api/upload:
+    post:
+      tags: [upload]
+      summary: Upload one or more images
+      description: |
+        Accepts multipart/form-data uploads. Validates magic bytes,
+        rejects unsupported formats with 415 and oversized files with 413.
+        On first call without `session_id`, a new session is created and
+        its UUID returned. Subsequent calls within the same logical
+        session SHOULD pass `session_id` to keep all uploads in the same
+        tmp dir.
+      parameters:
+        - in: query
+          name: session_id
+          required: false
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+              required: [files]
+      responses:
+        "200":
+          description: All files accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResponse"
+        "404":
+          description: Session expirée ou inexistante.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+        "413":
+          description: Fichier trop volumineux.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+        "415":
+          description: Format de fichier non supporté.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+        "422":
+          description: Validation échouée (nombre de fichiers, contenu).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /api/process:
+    post:
+      tags: [process]
+      summary: Launch async processing for a session
+      description: |
+        Starts background processing of all uploaded images of the
+        session that don't already have a cached cutout for the chosen
+        model. Returns a `task_id` to subscribe via SSE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProcessRequest" }
+      responses:
+        "200":
+          description: Task created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProcessResponse" }
+        "404":
+          description: Session expirée ou inexistante.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+        "422":
+          description: Body invalide (modèle inconnu, alpha_matting non bool).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /api/process/stream/{task_id}:
+    get:
+      tags: [process]
+      summary: SSE stream of processing progress
+      description: |
+        Server-Sent Events. See `contracts/sse-events.md` for the full
+        event schema. The connection is kept alive with a `:` comment
+        every 15 seconds.
+      parameters:
+        - in: path
+          name: task_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: SSE stream.
+          content:
+            text/event-stream:
+              schema: { type: string, description: "See sse-events.md" }
+        "404":
+          description: task_id inconnu ou expiré.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /api/cutout/{hash}:
+    get:
+      tags: [cutout]
+      summary: Fetch a cached cutout PNG
+      description: |
+        Returns the RGBA cutout from disk. The hash MUST be 64 hex chars
+        (sha-256). Optional `model` query param disambiguates when
+        multiple models have processed the same image; defaults to the
+        deployment-default model.
+      parameters:
+        - in: path
+          name: hash
+          required: true
+          schema: { type: string, pattern: "^[a-f0-9]{64}$" }
+        - in: query
+          name: model
+          required: false
+          schema:
+            type: string
+            enum: [birefnet-general, isnet-general-use, u2net, isnet-anime, passthrough]
+      responses:
+        "200":
+          description: PNG transparent (RGBA).
+          content:
+            image/png: {}
+        "404":
+          description: Cutout introuvable pour ce hash et ce modèle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /api/cache/clear:
+    post:
+      tags: [cutout]
+      summary: Wipe the cutout cache (admin action)
+      description: |
+        Removes every file under `cache/cutouts/`. Exposed in the UI
+        from the Advanced Settings panel (FR-009). Returns the number
+        of files deleted.
+      responses:
+        "200":
+          description: Cache vidé.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer, minimum: 0 }
+                required: [deleted]
+
+  /api/templates:
+    get:
+      tags: [templates]
+      summary: List available frame templates
+      description: |
+        Re-scans `templates/` on each call. Invalid SVGs are silently
+        skipped (FR-035) — they do not appear in the response but a
+        warning is logged.
+      responses:
+        "200":
+          description: Liste de cadres disponibles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FrameTemplateSummary" }
+
+  /api/templates/{id}:
+    get:
+      tags: [templates]
+      summary: Fetch raw SVG for a frame template
+      description: |
+        Returns the raw SVG so the client can inject color and header
+        text via DOM manipulation before rasterizing in Canvas.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: "^[a-z0-9_-]+$" }
+      responses:
+        "200":
+          description: SVG brut.
+          content:
+            image/svg+xml: {}
+        "404":
+          description: Cadre inconnu.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  /api/health:
+    get:
+      tags: [health]
+      summary: Health probe
+      responses:
+        "200":
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                  models_loaded:
+                    type: array
+                    items: { type: string }
+                  cache_size_mb: { type: number, minimum: 0 }
+                required: [status, models_loaded, cache_size_mb]
+
+components:
+  schemas:
+    ErrorBody:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: "Message d'erreur en français, affichable directement"
+      required: [detail]
+
+    UploadedImageOut:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1 }
+        hash: { type: string, pattern: "^[a-f0-9]{64}$" }
+        cutout_url:
+          type: string
+          nullable: true
+          description: "Présent si un cutout existe déjà en cache pour le modèle par défaut"
+      required: [id, name, hash]
+
+    UploadResponse:
+      type: object
+      properties:
+        session_id: { type: string, format: uuid }
+        images:
+          type: array
+          items: { $ref: "#/components/schemas/UploadedImageOut" }
+      required: [session_id, images]
+
+    ProcessRequest:
+      type: object
+      properties:
+        session_id: { type: string, format: uuid }
+        model:
+          type: string
+          enum: [birefnet-general, isnet-general-use, u2net, isnet-anime]
+          default: birefnet-general
+        alpha_matting:
+          type: boolean
+          default: false
+      required: [session_id]
+
+    ProcessResponse:
+      type: object
+      properties:
+        task_id: { type: string, format: uuid }
+      required: [task_id]
+
+    Rect:
+      type: object
+      properties:
+        x: { type: number }
+        y: { type: number }
+        width: { type: number, exclusiveMinimum: 0 }
+        height: { type: number, exclusiveMinimum: 0 }
+      required: [x, y, width, height]
+
+    FrameTemplateSummary:
+      type: object
+      properties:
+        id: { type: string, pattern: "^[a-z0-9_-]+$" }
+        name: { type: string, minLength: 1 }
+        preview_url: { type: string, description: "URL relative vers /api/templates/{id}" }
+        sticker_area: { $ref: "#/components/schemas/Rect" }
+        supports_color: { type: boolean }
+        supports_header: { type: boolean }
+      required: [id, name, preview_url, sticker_area, supports_color, supports_header]
