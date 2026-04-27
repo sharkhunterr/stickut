@@ -100,14 +100,9 @@ export function pack(stickers: StickerInput[], options: PackOptions): PackResult
     { smart: true, pot: false, square: false, allowRotation: true },
   );
 
-  type Box = { width: number; height: number; data: { id: string } };
-  const inputs: Box[] = sized.map((s) => ({
-    width: Math.round(s.w * SCALE),
-    height: Math.round(s.h * SCALE),
-    data: { id: s.id },
-  }));
-
-  packer.addArray(inputs);
+  for (const s of sized) {
+    packer.add(Math.round(s.w * SCALE), Math.round(s.h * SCALE), { id: s.id });
+  }
 
   const placed: PlacedSticker[] = [];
   const placedIds = new Set<string>();

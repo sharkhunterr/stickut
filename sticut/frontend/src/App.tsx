@@ -9,7 +9,7 @@ import { AdvancedPanel } from "./components/AdvancedPanel";
 import { UploadZone } from "./components/UploadZone";
 import { A4Preview } from "./components/A4Preview";
 import { applyWhiteBorderToBlob } from "./lib/canvas/border";
-import { getCutoutUrl, startProcess, uploadImages } from "./lib/api";
+import { startProcess, uploadImages } from "./lib/api";
 import { subscribeProcess } from "./lib/sse";
 import { useStore, type ImageState } from "./store/useStore";
 import type { ImageStep } from "./types";

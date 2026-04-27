@@ -26,7 +26,10 @@ export function ZoomModal({ src, alt, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  function distance(t1: Touch, t2: Touch): number {
+  function distance(
+    t1: { clientX: number; clientY: number },
+    t2: { clientX: number; clientY: number },
+  ): number {
     return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
   }
 

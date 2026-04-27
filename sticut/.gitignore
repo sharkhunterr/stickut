@@ -16,10 +16,11 @@ backend/static/
 *.tsbuildinfo
 *.log
 
-# Stickut runtime data (mounted volumes)
+# Stickut runtime data (mounted volumes + dev logs)
 cache/
 tmp/
 models/
+.dev-logs/
 
 # Env
 .env
