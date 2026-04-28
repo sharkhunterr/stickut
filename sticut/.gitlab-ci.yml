@@ -1,0 +1,315 @@
+# GitLab CI/CD Pipeline
+# Stickut — sticker sheet generator for Cricut Print Then Cut
+
+# =============================================================================
+# Variables globales
+# =============================================================================
+variables:
+  PROJECT_TYPE: "fullstack"
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+
+  ENABLE_BACKEND_TESTS: "false"        # Stickut V1 ships without a pytest suite
+  ENABLE_FRONTEND_TESTS: "false"
+  ENABLE_DOCKER_BUILD: "true"
+  ENABLE_GITLAB_REGISTRY: "false"
+
+  DOCKER_HUB_ENABLED: "true"           # Publier sur Docker Hub (sur les tags)
+  GITHUB_DEPLOY_ENABLED: "true"        # Synchroniser avec GitHub (sur les tags)
+
+  DOCKER_IMAGE: $CI_PROJECT_NAME
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_HOST: tcp://docker:2375
+
+# =============================================================================
+# Workflow — évite les pipelines en double
+# =============================================================================
+workflow:
+  rules:
+    - if: '$CI_COMMIT_TAG'                    # Toujours exécuter sur les tags
+    - if: '$CI_COMMIT_MESSAGE =~ /^chore\(release\)/'
+      when: never                              # Ignorer les commits de release
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
+stages:
+  - validate
+  - build
+  - publish
+  - deploy
+  - release
+  - verify
+
+# =============================================================================
+# Templates réutilisables
+# =============================================================================
+.python_template: &python_template
+  image: python:${PYTHON_VERSION}-slim
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-backend
+    paths:
+      - backend/.venv/
+  before_script:
+    - apt-get update -y && apt-get install -y --no-install-recommends git build-essential
+    - cd backend
+    - pip install --upgrade pip
+    - python -m venv .venv
+    - . .venv/bin/activate
+    - pip install -e ".[dev]"
+
+.node_template: &node_template
+  image: node:${NODE_VERSION}-alpine
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}-frontend
+    paths:
+      - frontend/node_modules/
+  before_script:
+    - cd frontend
+    - npm ci
+
+.docker_template: &docker_template
+  image: docker:24-cli
+  services:
+    - name: docker:24-dind
+      alias: docker
+      command: ["--tls=false"]
+  before_script:
+    - until docker info; do sleep 1; done
+
+# =============================================================================
+# Stage: Validate
+# =============================================================================
+validate:backend:
+  stage: validate
+  <<: *python_template
+  script:
+    - echo "Validation du backend Python..."
+    - . .venv/bin/activate
+    - ruff check app/ --output-format=text > ruff-report.txt || true
+    - ruff check app/ --fix
+    - ruff check app/ || echo "⚠️ Des erreurs subsistent après auto-fix"
+    - ruff format --check app/ || echo "⚠️ Des erreurs de formatage subsistent"
+  artifacts:
+    when: always
+    paths:
+      - backend/ruff-report.txt
+    expire_in: 1 week
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+validate:frontend:
+  stage: validate
+  <<: *node_template
+  script:
+    - echo "Validation du frontend TypeScript..."
+    - npm run typecheck
+    - npm run lint || echo "⚠️ Lint warnings (non bloquant)"
+  allow_failure: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+# =============================================================================
+# Stage: Build (Docker, sur tag)
+# =============================================================================
+build:docker:
+  stage: build
+  <<: *docker_template
+  variables:
+    DOCKER_BUILDKIT: 1
+  script:
+    - echo "Construction de l'image Docker Stickut..."
+    - |
+      docker build \
+        --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+        --build-arg VCS_REF=${CI_COMMIT_SHA} \
+        --build-arg VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+        --tag ${DOCKER_IMAGE}:${CI_COMMIT_SHA} \
+        --tag ${DOCKER_IMAGE}:${CI_COMMIT_REF_SLUG} \
+        --file docker/Dockerfile \
+        .
+    - echo "Image construite avec succès"
+  rules:
+    - if: '$CI_COMMIT_TAG && $ENABLE_DOCKER_BUILD == "true"'
+
+# =============================================================================
+# Stage: Deploy (Docker Hub + GitHub mirror)
+# =============================================================================
+deploy:
+  stage: deploy
+  image: docker:24-cli
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_BUILDKIT: 1
+    GIT_DEPTH: 0
+  before_script:
+    - apk add --no-cache git curl jq
+    - git fetch --unshallow || true
+    - until docker info; do sleep 1; done
+  script:
+    # ----- Docker Hub -----
+    - |
+      if [ "$DOCKER_HUB_ENABLED" = "true" ]; then
+        echo "Construction de l'image Docker..."
+        docker build \
+          --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+          --build-arg VCS_REF=${CI_COMMIT_SHA} \
+          --build-arg VERSION=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA} \
+          --tag ${DOCKER_IMAGE}:${CI_COMMIT_SHA} \
+          --file docker/Dockerfile \
+          .
+
+        echo "Publication sur Docker Hub..."
+        echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+
+        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${CI_PROJECT_NAME}"
+        TAG="${CI_COMMIT_TAG:-latest}"
+        docker tag ${DOCKER_IMAGE}:${CI_COMMIT_SHA} ${DOCKER_HUB_IMAGE}:${TAG}
+        docker push ${DOCKER_HUB_IMAGE}:${TAG}
+
+        if [ -n "$CI_COMMIT_TAG" ]; then
+          docker tag ${DOCKER_IMAGE}:${CI_COMMIT_SHA} ${DOCKER_HUB_IMAGE}:latest
+          docker push ${DOCKER_HUB_IMAGE}:latest
+        fi
+
+        if [ -f "docker/DOCKERHUB.md" ]; then
+          echo "Mise à jour du README Docker Hub..."
+          wget -q https://github.com/christian-korneck/docker-pushrm/releases/download/v1.9.0/docker-pushrm_linux_amd64 -O /usr/local/bin/docker-pushrm
+          chmod +x /usr/local/bin/docker-pushrm
+          docker-pushrm --file docker/DOCKERHUB.md --short "$CI_PROJECT_TITLE" "${DOCKER_HUB_IMAGE}" || echo "⚠️ docker-pushrm KO (non bloquant)"
+        fi
+      fi
+    # ----- GitHub mirror -----
+    - |
+      if [ "$GITHUB_DEPLOY_ENABLED" = "true" ]; then
+        echo "Synchronisation avec GitHub..."
+        git remote add github https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git || true
+        if [ -n "$CI_COMMIT_TAG" ]; then
+          git push github HEAD:refs/heads/${CI_DEFAULT_BRANCH} --force
+          git push github refs/tags/${CI_COMMIT_TAG}:refs/tags/${CI_COMMIT_TAG} --force
+        else
+          git push github HEAD:refs/heads/${CI_COMMIT_REF_NAME} --force
+        fi
+      fi
+  rules:
+    - if: '$CI_COMMIT_TAG && $DEPLOY == "true"'
+
+# =============================================================================
+# Stage: Release (GitLab + GitHub releases)
+# =============================================================================
+release:gitlab:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script:
+    - apk add --no-cache sed gawk
+  script:
+    - |
+      if [ -f GITHUB_RELEASES.md ]; then
+        NOTES=$(awk '/^## /{if(found==0){found=1; p=1; next}} /^# v[0-9]/{if(found==1 && p==1){exit}} p{print}' GITHUB_RELEASES.md | sed 's/^---$//' | sed '/^$/N;/^\n$/D')
+        if [ -z "$NOTES" ]; then
+          VERSION="${CI_COMMIT_TAG#v}"
+          NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md)
+          [ -z "$NOTES" ] && NOTES="Release ${CI_COMMIT_TAG}"
+        fi
+      else
+        VERSION="${CI_COMMIT_TAG#v}"
+        NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md 2>/dev/null)
+        [ -z "$NOTES" ] && NOTES="Release ${CI_COMMIT_TAG}"
+      fi
+      echo "$NOTES" > /tmp/release_notes.txt
+      echo "" >> /tmp/release_notes.txt
+      echo "---" >> /tmp/release_notes.txt
+      echo "[CHANGELOG complet](${CI_PROJECT_URL}/-/blob/${CI_COMMIT_TAG}/CHANGELOG.md)" >> /tmp/release_notes.txt
+      release-cli create \
+        --name "Release ${CI_COMMIT_TAG}" \
+        --tag-name "${CI_COMMIT_TAG}" \
+        --description "$(cat /tmp/release_notes.txt)"
+  rules:
+    - if: '$CI_COMMIT_TAG'
+
+release:github:
+  stage: release
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      if [ -f GITHUB_RELEASES.md ]; then
+        NOTES=$(awk '/^## /{if(found==0){found=1; p=1; next}} /^# v[0-9]/{if(found==1 && p==1){exit}} p{print}' GITHUB_RELEASES.md | sed 's/^---$//' | sed '/^$/N;/^\n$/D')
+        if [ -z "$NOTES" ]; then
+          VERSION="${CI_COMMIT_TAG#v}"
+          NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md 2>/dev/null)
+          [ -z "$NOTES" ] && NOTES="Release ${CI_COMMIT_TAG}"
+        fi
+      else
+        VERSION="${CI_COMMIT_TAG#v}"
+        NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md 2>/dev/null)
+        [ -z "$NOTES" ] && NOTES="Release ${CI_COMMIT_TAG}"
+      fi
+      RESPONSE=$(curl -X POST \
+        -H "Authorization: token ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        -H "Content-Type: application/json" \
+        -s -w "\n%{http_code}" \
+        "https://api.github.com/repos/${GITHUB_REPO}/releases" \
+        -d "$(jq -n \
+          --arg tag "${CI_COMMIT_TAG}" \
+          --arg name "Release ${CI_COMMIT_TAG}" \
+          --arg body "$NOTES" \
+          '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')")
+      HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+      BODY=$(echo "$RESPONSE" | sed '$d')
+      if [ "$HTTP_CODE" -eq 201 ]; then
+        echo "✅ Release GitHub créée"
+        echo "$BODY" | jq -r '.html_url'
+      else
+        echo "❌ Erreur HTTP $HTTP_CODE"
+        echo "$BODY" | jq '.' || echo "$BODY"
+        exit 1
+      fi
+  rules:
+    - if: '$CI_COMMIT_TAG && $DEPLOY == "true" && $GITHUB_DEPLOY_ENABLED == "true"'
+
+# =============================================================================
+# Stage: Verify (vérification post-deploy)
+# =============================================================================
+verify:
+  stage: verify
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      if [ "$DOCKER_HUB_ENABLED" = "true" ] && [ "$DEPLOY" = "true" ]; then
+        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${CI_PROJECT_NAME}"
+        TAG="${CI_COMMIT_TAG:-latest}"
+        RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_IMAGE}/tags/${TAG}")
+        if echo "$RESPONSE" | jq -e '.name' > /dev/null 2>&1; then
+          echo "✅ Image Docker Hub ${DOCKER_HUB_IMAGE}:${TAG} trouvée"
+        else
+          echo "❌ Image Docker Hub introuvable"
+          exit 1
+        fi
+      fi
+    - |
+      if [ "$GITHUB_DEPLOY_ENABLED" = "true" ] && [ "$DEPLOY" = "true" ]; then
+        RESPONSE=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" \
+          "https://api.github.com/repos/${GITHUB_REPO}/git/refs/tags/${CI_COMMIT_TAG}")
+        if echo "$RESPONSE" | jq -e '.ref' > /dev/null 2>&1; then
+          echo "✅ Tag ${CI_COMMIT_TAG} trouvé sur GitHub"
+        else
+          echo "❌ Tag introuvable sur GitHub"
+          exit 1
+        fi
+      fi
+    - echo "✅ Vérification terminée"
+  rules:
+    - if: '$CI_COMMIT_TAG && $DEPLOY == "true"'

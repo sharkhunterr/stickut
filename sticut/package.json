@@ -1,0 +1,43 @@
+{
+  "name": "stickut",
+  "version": "1.0.0",
+  "description": "Stickut — sticker sheet generator for Cricut Print Then Cut, with online image search and interactive A4 layout",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm run build",
+    "docker": "docker compose up --build",
+    "docker:detach": "docker compose up -d --build",
+    "docker:stop": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "release": "node scripts/release.js",
+    "release:github": "node scripts/release.js --github",
+    "release:deploy": "node scripts/release.js --deploy",
+    "release:full": "node scripts/release.js --github --deploy",
+    "push": "node scripts/push.js",
+    "push:github": "node scripts/push.js --github",
+    "push:all": "node scripts/push.js --all",
+    "push:tags": "node scripts/push.js --tags-only --all"
+  },
+  "devDependencies": {
+    "standard-version": "^9.5.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "python": ">=3.12.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sharkhunterr/stickut"
+  },
+  "keywords": [
+    "stickers",
+    "cricut",
+    "print-then-cut",
+    "rembg",
+    "background-removal",
+    "a4-layout",
+    "self-hosted"
+  ],
+  "author": "sharkhunterr",
+  "license": "MIT"
+}

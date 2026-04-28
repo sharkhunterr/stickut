@@ -2,7 +2,7 @@ services:
   stickut:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     image: stickut:1.0.0
     container_name: stickut
     restart: unless-stopped
