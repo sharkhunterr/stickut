@@ -20,6 +20,12 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+// Toujours s'exécuter depuis la racine du projet (parent de scripts/),
+// pour que .versionrc.json, package.json et standard-version trouvent leurs
+// fichiers même si l'utilisateur lance le script depuis un sous-dossier.
+const PROJECT_ROOT = path.resolve(__dirname, "..");
+process.chdir(PROJECT_ROOT);
+
 const args = process.argv.slice(2);
 const options = {
   github: args.includes("--github"),
@@ -54,7 +60,7 @@ function exec(command, description) {
 }
 
 function getCurrentVersion() {
-  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+  const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, "package.json"), "utf8"));
   return pkg.version;
 }
 
@@ -112,7 +118,7 @@ async function main() {
     if (options.gitlab && options.github) pushArgs.push("--all");
     else if (options.github) pushArgs.push("--github");
     // GitLab is default for push.js
-    const cmd = `node ${path.join(__dirname, "push.js")} ${pushArgs.join(" ")}`.trim();
+    const cmd = `node ${JSON.stringify(path.join(__dirname, "push.js"))} ${pushArgs.join(" ")}`.trim();
     exec(cmd, "Pushing branch and tags");
   } else {
     console.log("\n⏭️  Skipping push (--skip-push)");

@@ -15,6 +15,10 @@
  */
 
 const { execSync } = require("child_process");
+const path = require("path");
+
+// Run from project root regardless of caller cwd.
+process.chdir(path.resolve(__dirname, ".."));
 
 const args = process.argv.slice(2);
 const options = {
