@@ -1,6 +1,6 @@
 {
   "name": "stickut",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Stickut — sticker sheet generator for Cricut Print Then Cut, with online image search and interactive A4 layout",
   "private": true,
   "scripts": {
