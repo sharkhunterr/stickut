@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Flexible release script for Stickut.
+ * Flexible release script for Stickut
  *
  * Features:
- *  - Bump version using standard-version (CHANGELOG generated, tags created)
- *  - Push to GitLab (origin) and/or GitHub
- *  - Trigger CI which creates GitLab/GitHub releases from GITHUB_RELEASES.md
- *    and publishes the Docker image to Docker Hub
- *  - Dry-run support
+ * - Bump version using standard-version
+ * - Push to GitLab (GitHub push is handled by GitLab CI via GITHUB_TOKEN)
+ * - Create releases on GitLab and/or GitHub with content from GITHUB_RELEASES.md
+ * - Deploy to Docker Hub (triggers CI)
+ * - Support for dry-run mode
  *
  * Usage:
  *   npm run release              # Standard release (GitLab only)
@@ -16,130 +16,208 @@
  *   npm run release:full         # Release to both + Docker deploy
  */
 
-const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-// Toujours s'exécuter depuis la racine du projet (parent de scripts/),
-// pour que .versionrc.json, package.json et standard-version trouvent leurs
-// fichiers même si l'utilisateur lance le script depuis un sous-dossier.
-const PROJECT_ROOT = path.resolve(__dirname, "..");
-process.chdir(PROJECT_ROOT);
+// Always run from project root regardless of cwd.
+process.chdir(path.resolve(__dirname, '..'));
 
+// Parse command line arguments
 const args = process.argv.slice(2);
 const options = {
-  github: args.includes("--github"),
-  gitlab: !args.includes("--no-gitlab"),
-  deploy: args.includes("--deploy"),
-  dryRun: args.includes("--dry-run"),
-  skipPush: args.includes("--skip-push"),
-  skipRelease: args.includes("--skip-release"),
-  releaseType: args.find((a) => ["patch", "minor", "major"].includes(a)) || null,
+  github: args.includes('--github'),
+  gitlab: !args.includes('--no-gitlab'),
+  deploy: args.includes('--deploy'),
+  dryRun: args.includes('--dry-run'),
+  skipPush: args.includes('--skip-push'),
+  skipRelease: args.includes('--skip-release'),
+  releaseType: args.find(arg => ['patch', 'minor', 'major'].includes(arg)) || null,
 };
 
+// Get current git remote URLs
 function getRemoteUrl(remote) {
   try {
-    return execSync(`git remote get-url ${remote}`, { encoding: "utf8" }).trim();
+    return execSync(`git remote get-url ${remote}`, { encoding: 'utf8' }).trim();
   } catch {
     return null;
   }
 }
 
+// Execute command with logging
 function exec(command, description) {
   console.log(`\n📦 ${description}...`);
   if (options.dryRun) {
     console.log(`   [DRY RUN] ${command}`);
-    return "";
+    return '';
   }
   try {
-    return execSync(command, { encoding: "utf8", stdio: "inherit" });
-  } catch {
+    return execSync(command, { encoding: 'utf8', stdio: 'inherit' });
+  } catch (error) {
     console.error(`❌ Failed: ${description}`);
     process.exit(1);
   }
 }
 
+// Read release notes from GITHUB_RELEASES.md
+function getLatestReleaseNotes() {
+  const releasesFile = path.join(__dirname, '..', 'GITHUB_RELEASES.md');
+
+  if (!fs.existsSync(releasesFile)) {
+    console.warn('⚠️  GITHUB_RELEASES.md not found, release will have no description');
+    return '';
+  }
+
+  const content = fs.readFileSync(releasesFile, 'utf8');
+
+  // Extract the first release section (most recent)
+  const releaseMatch = content.match(/##\s+\[?v?[\d.]+\]?[^\n]*\n([\s\S]*?)(?=\n##|\n---|\Z)/);
+
+  if (releaseMatch) {
+    return releaseMatch[0].trim();
+  }
+
+  return content.trim();
+}
+
+// Get current version from package.json
 function getCurrentVersion() {
-  const pkg = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, "package.json"), "utf8"));
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   return pkg.version;
 }
 
+// Main release flow
 async function main() {
-  console.log("🚀 Stickut Release Script\n");
-  console.log("Options:", options);
+  console.log('🚀 Stickut Release Script\n');
+  console.log('Options:', options);
 
-  // 1) Working directory must be clean.
+  // Check git status
   try {
-    const status = execSync("git status --porcelain", { encoding: "utf8" });
+    const status = execSync('git status --porcelain', { encoding: 'utf8' });
     if (status && !options.dryRun) {
-      console.error("❌ Working directory not clean. Commit or stash changes first.");
+      console.error('❌ Working directory not clean. Commit or stash changes first.');
       process.exit(1);
     }
-  } catch {
-    console.error("❌ Failed to check git status");
+  } catch (error) {
+    console.error('❌ Failed to check git status');
     process.exit(1);
   }
 
-  const currentBranch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8" }).trim();
+  // Get current branch
+  const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
   console.log(`\n📌 Current branch: ${currentBranch}`);
 
-  const gitlabUrl = getRemoteUrl("origin");
-  const githubUrl = getRemoteUrl("github");
+  // Check remotes
+  const gitlabUrl = getRemoteUrl('origin');
+
   console.log(`\n🔗 Remotes:`);
-  console.log(`   GitLab (origin): ${gitlabUrl || "not configured"}`);
-  console.log(`   GitHub:          ${githubUrl || "not configured"}`);
+  console.log(`   GitLab: ${gitlabUrl || 'not configured'}`);
+  console.log(`   GitHub: will use GITHUB_TOKEN env var or gh CLI auth`);
 
   if (options.gitlab && !gitlabUrl) {
-    console.error("❌ GitLab remote (origin) not configured");
-    process.exit(1);
-  }
-  if (options.github && !githubUrl) {
-    console.error("❌ GitHub remote not configured. Run: git remote add github <url>");
+    console.error('❌ GitLab remote (origin) not configured');
     process.exit(1);
   }
 
-  const previous = getCurrentVersion();
-  console.log(`\n🔢 Current version: ${previous}`);
-
-  // 2) Bump version with standard-version (reads .versionrc.json).
-  let versionCmd = "npx standard-version";
-  if (options.releaseType) versionCmd += ` --release-as ${options.releaseType}`;
-  if (options.dryRun) versionCmd += " --dry-run";
-  exec(versionCmd, "Bumping version (standard-version)");
-
-  if (!options.dryRun) {
-    const next = getCurrentVersion();
-    console.log(`\n🆕 New version: ${next}`);
+  // Step 1: Run standard-version to bump version
+  let versionCmd = 'npx standard-version';
+  if (options.releaseType) {
+    versionCmd += ` --release-as ${options.releaseType}`;
+  }
+  if (options.dryRun) {
+    versionCmd += ' --dry-run';
   }
 
-  // 3) Push branch + tags to selected remotes.
+  exec(versionCmd, 'Bumping version with standard-version');
+
+  if (options.dryRun) {
+    console.log('\n✅ Dry run completed. No changes made.');
+    return;
+  }
+
+  const newVersion = getCurrentVersion();
+  const tag = `v${newVersion}`;
+  console.log(`\n✨ New version: ${tag}`);
+
+  // Step 2: Push to GitLab (GitHub push is handled by GitLab CI)
   if (!options.skipPush) {
-    const pushArgs = [];
-    if (options.gitlab && options.github) pushArgs.push("--all");
-    else if (options.github) pushArgs.push("--github");
-    // GitLab is default for push.js
-    const cmd = `node ${JSON.stringify(path.join(__dirname, "push.js"))} ${pushArgs.join(" ")}`.trim();
-    exec(cmd, "Pushing branch and tags");
-  } else {
-    console.log("\n⏭️  Skipping push (--skip-push)");
-  }
+    const pushOptions = options.deploy ? '-o ci.variable="DEPLOY=true"' : '';
 
-  // 4) Trigger Docker deploy via CI variable DEPLOY=true.
-  if (options.deploy) {
-    if (!gitlabUrl) {
-      console.warn("\n⚠️  Cannot trigger CI deploy: no GitLab remote.");
-    } else {
-      console.log("\n🐳 Docker deploy triggered via tag push.");
-      console.log("    The .gitlab-ci.yml job runs when DEPLOY=true is set on the pipeline.");
-      console.log("    Set DEPLOY=true in GitLab CI/CD variables (or run the pipeline manually with that var).");
+    if (options.gitlab) {
+      exec(
+        `git push origin ${currentBranch} --follow-tags ${pushOptions}`,
+        'Pushing to GitLab'
+      );
+
+      if (options.github) {
+        console.log('\n💡 GitHub push will be handled by GitLab CI');
+      }
     }
   }
 
-  console.log("\n✅ Release completed.");
-  console.log("\nNext steps:");
-  console.log("  - Watch CI pipeline (GitLab) for the new tag.");
-  console.log("  - Docker image will appear on Docker Hub once `deploy` job succeeds.");
-  console.log("  - GitHub release is created automatically from GITHUB_RELEASES.md.");
+  // Step 3: Create releases
+  if (!options.skipRelease) {
+    const releaseNotes = getLatestReleaseNotes();
+    const releaseNotesFile = '/tmp/stickut-release-notes.md';
+    fs.writeFileSync(releaseNotesFile, releaseNotes);
+
+    if (options.gitlab && gitlabUrl) {
+      console.log('\n📋 Creating GitLab release...');
+      try {
+        // Check if glab is installed
+        execSync('which glab', { stdio: 'ignore' });
+
+        const glabCmd = `glab release create ${tag} --notes-file "${releaseNotesFile}" --name "Release ${tag}"`;
+        exec(glabCmd, 'Creating GitLab release');
+      } catch {
+        console.warn('⚠️  glab CLI not found. Skipping GitLab release creation.');
+        console.log('   Install with: brew install glab (macOS) or https://gitlab.com/gitlab-org/cli');
+      }
+    }
+
+    if (options.github) {
+      console.log('\n📋 Creating GitHub release...');
+
+      // Check for GITHUB_TOKEN env var
+      const githubToken = process.env.GITHUB_TOKEN;
+      const githubRepo = process.env.GITHUB_REPO || 'sharkhunterr/stickut';
+
+      if (!githubToken) {
+        console.warn('⚠️  GITHUB_TOKEN not found in environment variables.');
+        console.log('   GitHub release will be created by GitLab CI');
+      } else {
+        try {
+          // Check if gh is installed
+          execSync('which gh', { stdio: 'ignore' });
+
+          // Use gh CLI with token from env
+          const ghCmd = `GH_TOKEN=${githubToken} gh release create ${tag} --repo ${githubRepo} --notes-file "${releaseNotesFile}" --title "Release ${tag}"`;
+          exec(ghCmd, 'Creating GitHub release');
+        } catch {
+          console.warn('⚠️  gh CLI not found.');
+          console.log('   GitHub release will be created by GitLab CI');
+          console.log('   Install gh CLI: brew install gh (macOS) or https://cli.github.com/');
+        }
+      }
+    }
+
+    // Cleanup
+    if (fs.existsSync(releaseNotesFile)) {
+      fs.unlinkSync(releaseNotesFile);
+    }
+  }
+
+  console.log('\n✅ Release completed successfully!');
+  console.log(`\n📦 Version: ${tag}`);
+
+  if (options.deploy) {
+    console.log(`\n🐳 Docker deployment triggered via GitLab CI`);
+    console.log(`   Check pipeline: ${gitlabUrl}/-/pipelines`);
+  }
 }
 
-main();
+// Run
+main().catch(error => {
+  console.error('\n❌ Release failed:', error.message);
+  process.exit(1);
+});
