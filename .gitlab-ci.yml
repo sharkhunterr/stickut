@@ -17,10 +17,10 @@ variables:
   DOCKER_HUB_ENABLED: "true"           # Publier sur Docker Hub (sur les tags)
   GITHUB_DEPLOY_ENABLED: "true"        # Synchroniser avec GitHub (sur les tags)
 
-  # Nom de l'image Docker Hub. Par défaut = nom du projet GitLab (sticut).
-  # À overrider dans CI/CD → Variables (DOCKER_HUB_IMAGE_NAME=stickut) si on
-  # veut rester aligné avec le nom du repo GitHub.
-  DOCKER_HUB_IMAGE_NAME: $CI_PROJECT_NAME
+  # Nom de l'image Docker Hub. Hardcodé à "stickut" pour rester aligné avec le
+  # repo GitHub (le projet GitLab s'appelle "sticut" sans le k, mais l'image
+  # publique est canoniquement "stickut"). Override possible via CI/CD Variables.
+  DOCKER_HUB_IMAGE_NAME: stickut
 
   DOCKER_IMAGE: $CI_PROJECT_NAME
   DOCKER_DRIVER: overlay2
