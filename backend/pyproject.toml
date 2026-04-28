@@ -1,6 +1,6 @@
 [project]
 name = "stickut-backend"
-version = "1.0.0"
+version = "1.1.0"
 description = "Stickut V1 backend — A4 sticker sheet generator for Cricut Print Then Cut"
 requires-python = ">=3.12,<3.13"
 dependencies = [
