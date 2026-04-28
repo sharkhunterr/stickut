@@ -17,6 +17,11 @@ variables:
   DOCKER_HUB_ENABLED: "true"           # Publier sur Docker Hub (sur les tags)
   GITHUB_DEPLOY_ENABLED: "true"        # Synchroniser avec GitHub (sur les tags)
 
+  # Nom de l'image Docker Hub. Par défaut = nom du projet GitLab (sticut).
+  # À overrider dans CI/CD → Variables (DOCKER_HUB_IMAGE_NAME=stickut) si on
+  # veut rester aligné avec le nom du repo GitHub.
+  DOCKER_HUB_IMAGE_NAME: $CI_PROJECT_NAME
+
   DOCKER_IMAGE: $CI_PROJECT_NAME
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""
@@ -170,7 +175,7 @@ deploy:
         echo "Publication sur Docker Hub..."
         echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
 
-        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${CI_PROJECT_NAME}"
+        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${DOCKER_HUB_IMAGE_NAME:-$CI_PROJECT_NAME}"
         TAG="${CI_COMMIT_TAG:-latest}"
         docker tag ${DOCKER_IMAGE}:${CI_COMMIT_SHA} ${DOCKER_HUB_IMAGE}:${TAG}
         docker push ${DOCKER_HUB_IMAGE}:${TAG}
@@ -289,7 +294,7 @@ verify:
   script:
     - |
       if [ "$DOCKER_HUB_ENABLED" = "true" ] && [ "$DEPLOY" = "true" ]; then
-        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${CI_PROJECT_NAME}"
+        DOCKER_HUB_IMAGE="${DOCKER_HUB_USER}/${DOCKER_HUB_IMAGE_NAME:-$CI_PROJECT_NAME}"
         TAG="${CI_COMMIT_TAG:-latest}"
         RESPONSE=$(curl -s "https://hub.docker.com/v2/repositories/${DOCKER_HUB_IMAGE}/tags/${TAG}")
         if echo "$RESPONSE" | jq -e '.name' > /dev/null 2>&1; then
