@@ -55,6 +55,8 @@ export interface HealthResponse {
   status: "ok";
   models_loaded: string[];
   cache_size_mb: number;
+  search_enabled?: boolean;
+  search_provider?: "pixabay" | "openverse" | null;
 }
 
 export interface CacheClearResponse {
@@ -85,4 +87,18 @@ export interface SSEImageFailed {
 export interface SSEComplete {
   processed: number;
   failed: number;
+}
+
+/** Override utilisateur pour un sticker placé manuellement dans le preview.
+ *  Si présent, remplace les valeurs auto-calculées par le packing.
+ *  - xMm, yMm    : coin haut-gauche du rectangle (sans rotation)
+ *  - widthMm, heightMm : dimensions avant rotation
+ *  - angleDeg    : rotation autour du centre, en degrés (0 = naturel)
+ */
+export interface StickerOverride {
+  xMm: number;
+  yMm: number;
+  widthMm: number;
+  heightMm: number;
+  angleDeg: number;
 }

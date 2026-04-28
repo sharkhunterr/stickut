@@ -43,29 +43,90 @@ def _get_session(model: str) -> Any:
     return sess
 
 
+def _fill_alpha_holes(png_bytes: bytes, original_path: str) -> bytes:
+    """Bouche les trous internes du masque alpha en restaurant les RGB d'origine.
+
+    rembg (surtout isnet/u2net) regarde la couleur : si l'intérieur du sujet
+    a la même teinte que le fond, des "trous" de transparence apparaissent au
+    milieu du sujet. On détecte ces trous via scipy.ndimage.binary_fill_holes
+    puis :
+      - alpha → 255
+      - RGB → couleur du pixel correspondant dans l'image source
+        (rembg met RGB=0 dans les zones masquées, on doit donc les recoller).
+    """
+    import numpy as np
+    from PIL import Image
+    from scipy.ndimage import binary_fill_holes
+
+    out_img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    out_arr = np.array(out_img)
+    alpha = out_arr[:, :, 3]
+    # Seuil > 16 plutôt que > 0 : avec alpha matting (bords flous), de minuscules
+    # halos résiduels créent des "îlots" qui empêchent fill_holes de boucher.
+    mask = alpha > 16
+    filled = binary_fill_holes(mask)
+    holes = filled & ~mask
+    if not holes.any():
+        return png_bytes
+
+    # Recharge l'original pour lire les RGB des pixels-trous.
+    src = Image.open(original_path).convert("RGB")
+    if src.size != out_img.size:
+        # rembg conserve les dimensions, mais au cas où.
+        src = src.resize(out_img.size, Image.LANCZOS)
+    src_arr = np.array(src)
+
+    out_arr[holes, 0] = src_arr[holes, 0]
+    out_arr[holes, 1] = src_arr[holes, 1]
+    out_arr[holes, 2] = src_arr[holes, 2]
+    out_arr[holes, 3] = 255
+
+    buf = io.BytesIO()
+    Image.fromarray(out_arr, mode="RGBA").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _detour_sync(image_path: str, model: str, alpha_matting: bool) -> bytes:
     """Run rembg in the worker process. Returns PNG bytes (RGBA)."""
+    import time as _time
+    print(f"[worker] detour.begin pid={os.getpid()} model={model} path={image_path}", flush=True)
     from rembg import remove  # imported inside worker to avoid main-process load
 
+    t_session = _time.time()
     session = _get_session(model)
+    print(f"[worker] session ready model={model} elapsed={_time.time()-t_session:.2f}s", flush=True)
     src_bytes = Path(image_path).read_bytes()
+    print(f"[worker] read input bytes={len(src_bytes)}", flush=True)
     kwargs: dict[str, Any] = {"session": session}
     if alpha_matting:
         kwargs["alpha_matting"] = True
         kwargs["alpha_matting_foreground_threshold"] = 240
         kwargs["alpha_matting_background_threshold"] = 10
         kwargs["alpha_matting_erode_size"] = 10
+    t_remove = _time.time()
     out = remove(src_bytes, **kwargs)
-    if isinstance(out, (bytes, bytearray)):
-        return bytes(out)
-    # remove() can also return a PIL image when given one — normalise to PNG bytes.
-    from PIL import Image  # local import for typing only
+    print(f"[worker] rembg.remove done elapsed={_time.time()-t_remove:.2f}s", flush=True)
 
-    if isinstance(out, Image.Image):
-        buf = io.BytesIO()
-        out.convert("RGBA").save(buf, format="PNG")
-        return buf.getvalue()
-    raise TypeError(f"Unexpected rembg output: {type(out)!r}")
+    # Normaliser la sortie en PNG bytes.
+    if isinstance(out, (bytes, bytearray)):
+        png = bytes(out)
+    else:
+        from PIL import Image  # local import
+        if isinstance(out, Image.Image):
+            buf = io.BytesIO()
+            out.convert("RGBA").save(buf, format="PNG")
+            png = buf.getvalue()
+        else:
+            raise TypeError(f"Unexpected rembg output: {type(out)!r}")
+
+    # Post-traitement : combler les trous internes (cf. _fill_alpha_holes).
+    t_fill = _time.time()
+    try:
+        png = _fill_alpha_holes(png, image_path)
+    except Exception as e:
+        print(f"[worker] fill_holes FAILED ({e!r}) — keeping rembg output", flush=True)
+    print(f"[worker] fill_holes done elapsed={_time.time()-t_fill:.2f}s", flush=True)
+    return png
 
 
 class CutoutRunner:

@@ -4,46 +4,45 @@ import { clearCache } from "../lib/api";
 import type { ModelName } from "../types";
 
 const MODELS: { id: ModelName; label: string; hint: string }[] = [
-  { id: "birefnet-general", label: "Qualité maximale", hint: "BiRefNet — meilleur rendu, plus lent" },
-  { id: "isnet-general-use", label: "Équilibré", hint: "isnet-general-use — bon compromis" },
+  { id: "isnet-general-use", label: "Équilibré (recommandé)", hint: "isnet-general-use — bon compromis vitesse/qualité" },
   { id: "u2net", label: "Rapide", hint: "u2net — léger et rapide" },
+  { id: "birefnet-general", label: "Qualité maximale (lent)", hint: "BiRefNet — meilleur rendu, ~10× plus lent" },
   { id: "isnet-anime", label: "Cartoon / dessin", hint: "isnet-anime — pour images stylisées" },
 ];
 
 export function AdvancedPanel() {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
-  const setError = useStore((s) => s.setGlobalError);
-  const [open, setOpen] = useState(false);
+  const resetImageCutouts = useStore((s) => s.resetImageCutouts);
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   const onClearCache = async () => {
-    if (!window.confirm("Vider tout le cache de détourage ?")) return;
+    if (!window.confirm("Vider tout le cache de détourage ?\n\nLes images seront re-détourées au prochain traitement.")) return;
     setBusy(true);
+    setFeedback(null);
     try {
       const res = await clearCache();
-      setError(`${res.deleted} fichiers supprimés du cache.`);
+      // Reset l'état frontend des images aussi → le prochain "Lancer le traitement"
+      // les re-détourera (sinon les blob URLs côté client masquent que le cache serveur est vide).
+      resetImageCutouts();
+      setFeedback({
+        kind: "ok",
+        msg: `${res.deleted} fichier(s) supprimé(s). Relance le traitement pour appliquer.`,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Échec du vidage du cache.");
+      setFeedback({
+        kind: "err",
+        msg: err instanceof Error ? err.message : "Échec du vidage du cache.",
+      });
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full text-left px-4 py-3 font-semibold text-slate-800 flex items-center justify-between min-h-touch"
-        aria-expanded={open}
-      >
-        <span>Paramètres avancés</span>
-        <span aria-hidden>{open ? "▾" : "▸"}</span>
-      </button>
-      {open && (
-        <div className="grid gap-4 px-4 pb-4">
-          <fieldset className="grid gap-2">
+    <div className="grid gap-4">
+      <fieldset className="grid gap-2">
             <legend className="text-sm font-medium text-slate-700">Modèle de détourage</legend>
             {MODELS.map((m) => (
               <label key={m.id} className="flex items-start gap-2 min-h-touch">
@@ -76,16 +75,25 @@ export function AdvancedPanel() {
             </span>
           </label>
 
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void onClearCache()}
-            disabled={busy}
-          >
-            {busy ? "Suppression…" : "Vider le cache de détourage"}
-          </button>
-        </div>
+      <button
+        type="button"
+        className="btn-secondary"
+        onClick={() => void onClearCache()}
+        disabled={busy}
+      >
+        {busy ? "Suppression…" : "Vider le cache de détourage"}
+      </button>
+      {feedback && (
+        <p
+          className={`text-xs px-2 py-1.5 rounded border ${
+            feedback.kind === "ok"
+              ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+              : "text-rose-800 bg-rose-50 border-rose-200"
+          }`}
+        >
+          {feedback.msg}
+        </p>
       )}
-    </section>
+    </div>
   );
 }

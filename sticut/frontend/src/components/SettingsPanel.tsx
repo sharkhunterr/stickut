@@ -1,14 +1,72 @@
 import { useStore } from "../store/useStore";
+import { CUSTOM_FORMAT_ID, PAGE_FORMATS, getFormat } from "../lib/canvas/page-formats";
 
 export function SettingsPanel() {
   const settings = useStore((s) => s.settings);
   const setSettings = useStore((s) => s.setSettings);
 
+  const onFormatChange = (id: string) => {
+    if (id === CUSTOM_FORMAT_ID) {
+      setSettings({ pageFormatId: CUSTOM_FORMAT_ID });
+      return;
+    }
+    const f = getFormat(id);
+    if (!f) return;
+    setSettings({ pageFormatId: id, pageWidthMm: f.widthMm, pageHeightMm: f.heightMm });
+  };
+
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 grid gap-4">
-      <header>
-        <h2 className="font-semibold text-slate-800">Réglages</h2>
-      </header>
+    <div className="grid gap-4">
+      <div className="grid gap-2">
+        <label className="text-sm font-medium text-slate-700" htmlFor="page-format">
+          Format de feuille
+        </label>
+        <select
+          id="page-format"
+          value={settings.pageFormatId}
+          onChange={(e) => onFormatChange(e.target.value)}
+          className="min-h-touch px-3 rounded-md border border-slate-300 bg-white"
+        >
+          {PAGE_FORMATS.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.label}
+            </option>
+          ))}
+          <option value={CUSTOM_FORMAT_ID}>Personnalisé…</option>
+        </select>
+        {settings.pageFormatId === CUSTOM_FORMAT_ID && (
+          <div className="flex items-center gap-2">
+            <label className="flex-1 text-xs text-slate-600">
+              Largeur (mm)
+              <input
+                type="number"
+                min={20}
+                max={1000}
+                step={1}
+                value={settings.pageWidthMm}
+                onChange={(e) =>
+                  setSettings({ pageWidthMm: Math.max(20, Math.min(1000, Number(e.target.value) || 0)) })
+                }
+                className="block w-full min-h-touch px-2 rounded border border-slate-300"
+              />
+            </label>
+            <label className="flex-1 text-xs text-slate-600">
+              Hauteur (mm)
+              <input
+                type="number"
+                min={20}
+                max={1000}
+                step={1}
+                value={settings.pageHeightMm}
+                onChange={(e) =>
+                  setSettings({ pageHeightMm: Math.max(20, Math.min(1000, Number(e.target.value) || 0)) })
+                }
+                className="block w-full min-h-touch px-2 rounded border border-slate-300"
+              />
+            </label>
+          </div>
+        )}
+      </div>
 
       <div className="flex gap-2">
         <label className="flex-1">
@@ -97,7 +155,7 @@ export function SettingsPanel() {
       />
 
       <Slider
-        label="Marge extérieure A4"
+        label="Marge extérieure"
         unit="mm"
         min={5}
         max={20}
@@ -105,7 +163,7 @@ export function SettingsPanel() {
         value={settings.outerMarginMm}
         onChange={(v) => setSettings({ outerMarginMm: v })}
       />
-    </section>
+    </div>
   );
 }
 
