@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { ExportButton } from "./components/ExportButton";
 import { FrameSelector } from "./components/FrameSelector";
-import { ImageGrid } from "./components/ImageGrid";
 import { ProgressBar } from "./components/ProgressBar";
 import { SettingsPanel } from "./components/SettingsPanel";
-import { AdvancedPanel } from "./components/AdvancedPanel";
 import { UploadZone } from "./components/UploadZone";
+import { UploadedStrip } from "./components/UploadedStrip";
+import { AppSettingsButton } from "./components/AppSettingsButton";
+import { SearchPanel } from "./components/SearchPanel";
 import { A4Preview } from "./components/A4Preview";
 import { applyWhiteBorderToBlob } from "./lib/canvas/border";
 import { startProcess, uploadImages } from "./lib/api";
@@ -25,6 +26,10 @@ export default function App() {
   const setError = useStore((s) => s.setGlobalError);
 
   const [running, setRunning] = useState(false);
+  const setProcessing = useStore((s) => s.setProcessing);
+  useEffect(() => {
+    setProcessing(running);
+  }, [running, setProcessing]);
   const subRef = useRef<{ close: () => void } | null>(null);
 
   // Re-render border whenever the user changes thickness AND the cutout is available.
@@ -74,6 +79,7 @@ export default function App() {
         step: u.cutout_url ? "Génération du contour" : "En attente",
         error: null,
         unplaced: false,
+        count: 1,
       }));
       addImages(next);
     } catch (err) {
@@ -164,7 +170,7 @@ export default function App() {
       <header className="bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
           <h1 className="text-xl font-bold tracking-tight">Stickut</h1>
-          <span className="text-xs text-slate-500">planches A4 pour Cricut Print Then Cut</span>
+          <AppSettingsButton />
         </div>
       </header>
 
@@ -172,43 +178,49 @@ export default function App() {
         <ErrorBanner />
 
         <UploadZone onFiles={onFiles} disabled={running} />
+        <SearchPanel />
+        <UploadedStrip />
 
         {images.length > 0 && (
           <>
-            <div className="grid lg:grid-cols-[2fr_3fr] gap-4">
-              <div className="grid gap-3">
-                <ProgressBar done={stats.done} total={stats.total} />
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void onProcess()}
-                  disabled={running || images.length === 0}
-                >
-                  {running ? "Traitement en cours…" : "Lancer le traitement"}
-                </button>
-                <ExportButton />
-                <SettingsPanel />
-                <FrameSelector />
-                <AdvancedPanel />
-              </div>
-              <div className="grid gap-3">
-                <A4Preview />
-                <ImageGrid />
-              </div>
-            </div>
+            <FrameSelector />
+            <ParamsCollapsible />
+            <ProgressBar done={stats.done} total={stats.total} />
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void onProcess()}
+              disabled={running || images.length === 0}
+            >
+              {running ? "Traitement en cours…" : "Lancer le traitement"}
+            </button>
+            <ExportButton />
+            <A4Preview />
           </>
         )}
       </main>
-
-      <footer className="max-w-6xl mx-auto px-4 py-6 text-xs text-slate-500">
-        <p>
-          Stickut V1 — auto-hébergé, sans télémétrie. Voir{" "}
-          <a className="underline" href="/api/docs">
-            /api/docs
-          </a>{" "}
-          pour l'API.
-        </p>
-      </footer>
     </div>
+  );
+}
+
+function ParamsCollapsible() {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full text-left px-4 py-3 font-semibold text-slate-800 flex items-center justify-between min-h-touch"
+        aria-expanded={open}
+      >
+        <span>Réglages</span>
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <SettingsPanel />
+        </div>
+      )}
+    </section>
   );
 }

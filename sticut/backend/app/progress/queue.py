@@ -78,6 +78,8 @@ class CutoutQueue:
         self._waiter_task = None
 
     async def submit_task(self, task_id: str, items: list[WorkItem]) -> None:
+        logger.info("submit_task task=%s items=%d models=%s", task_id, len(items),
+                    sorted({i.model for i in items}))
         await self.bus.register(task_id)
         async with self._lock:
             self._tasks[task_id] = TaskState(task_id=task_id, total=len(items))
@@ -88,6 +90,9 @@ class CutoutQueue:
                 task_id,
                 Event(name="image_progress", data={"image_id": item.image_id, "step": "En attente"}),
             )
+        logger.info("submit_task task=%s queued, qsize=%d dispatcher=%s",
+                    task_id, self._queue.qsize(),
+                    "running" if self._dispatcher and not self._dispatcher.done() else "DEAD")
 
     async def _reemit_waiting_loop(self) -> None:
         try:
@@ -110,17 +115,43 @@ class CutoutQueue:
             raise
 
     async def _run(self) -> None:
+        logger.info("dispatcher started")
         while True:
             try:
                 item = await self._queue.get()
             except asyncio.CancelledError:
+                logger.info("dispatcher cancelled")
                 raise
+            logger.info("dispatcher.pick task=%s image=%s name=%s model=%s",
+                        item.task_id, item.image_id, item.image_name, item.model)
             try:
                 await self._process(item)
             except Exception:
                 logger.exception("dispatcher: unexpected failure for image %s", item.image_id)
             finally:
                 self._queue.task_done()
+                logger.info("dispatcher.done task=%s image=%s qsize=%d",
+                            item.task_id, item.image_id, self._queue.qsize())
+
+    async def _detour_heartbeat(self, task_id: str, image_id: str, t0: float) -> None:
+        """Émet un event toutes les 2 s pendant le détourage rembg (silencieux)."""
+        try:
+            while True:
+                await asyncio.sleep(2.0)
+                elapsed = time.time() - t0
+                await self.bus.publish(
+                    task_id,
+                    Event(
+                        name="image_progress",
+                        data={
+                            "image_id": image_id,
+                            "step": "Détourage IA",
+                            "elapsed_s": round(elapsed, 1),
+                        },
+                    ),
+                )
+        except asyncio.CancelledError:
+            return
 
     async def _remove_from_waiting(self, item: WorkItem) -> None:
         async with self._lock:
@@ -157,6 +188,7 @@ class CutoutQueue:
         await self._remove_from_waiting(item)
         loop = asyncio.get_running_loop()
 
+        logger.info("process.start image=%s path=%s", item.image_id, item.image_path)
         # 1) image_started + Décodage
         await self.bus.publish(
             item.task_id,
@@ -167,7 +199,10 @@ class CutoutQueue:
         )
 
         try:
+            logger.info("process.decode image=%s", item.image_id)
             rgba = await loop.run_in_executor(None, decode_to_rgba, item.image_path)
+            logger.info("process.decoded image=%s size=%s mode=%s",
+                        item.image_id, getattr(rgba, "size", None), getattr(rgba, "mode", None))
         except Exception as exc:
             logger.warning("decoding failed for %s: %s", item.image_path, exc)
             await self.bus.publish(
@@ -181,7 +216,10 @@ class CutoutQueue:
             return
 
         # 2) Cache hit?
-        if self.cache.exists(item.image_hash, item.model):
+        cache_hit = self.cache.exists(item.image_hash, item.model)
+        logger.info("process.cache image=%s hash=%s model=%s hit=%s",
+                    item.image_id, item.image_hash, item.model, cache_hit)
+        if cache_hit:
             await self.bus.publish(
                 item.task_id,
                 Event(
@@ -239,7 +277,25 @@ class CutoutQueue:
             ),
         )
         try:
-            png_bytes = await self.runner.detour(item.image_path, item.model, item.alpha_matting)
+            logger.info("process.detour.start image=%s model=%s alpha=%s",
+                        item.image_id, item.model, item.alpha_matting)
+            t0 = time.time()
+            # Heartbeat : pendant que rembg tourne (silencieux), on publie un event
+            # tous les 2 s pour (a) garder la connexion SSE en vie côté client,
+            # (b) afficher l'avancement intra-étape côté frontend.
+            heartbeat = asyncio.create_task(
+                self._detour_heartbeat(item.task_id, item.image_id, t0)
+            )
+            try:
+                png_bytes = await self.runner.detour(item.image_path, item.model, item.alpha_matting)
+            finally:
+                heartbeat.cancel()
+                try:
+                    await heartbeat
+                except (asyncio.CancelledError, Exception):
+                    pass
+            logger.info("process.detour.done image=%s bytes=%d elapsed=%.2fs",
+                        item.image_id, len(png_bytes), time.time() - t0)
         except OSError as exc:
             logger.error("disk full while detouring: %s", exc)
             await self.bus.publish(

@@ -51,6 +51,8 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     models_loaded: list[str]
     cache_size_mb: float
+    search_enabled: bool = False
+    search_provider: Literal["pixabay", "openverse"] | None = None
 
 
 class CacheClearResponse(BaseModel):

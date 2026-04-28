@@ -30,8 +30,12 @@ ENV PYTHONUNBUFFERED=1 \
     STICKUT_PORT=8000
 
 # System deps for Pillow (HEIC/AVIF decoders, libxml2 for lxml).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libheif1 libde265-0 libavif15 libxml2 libxslt1.1 curl \
+# libavif soversion varies between Debian releases (15 on bookworm, 16 on trixie).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libheif1 libde265-0 libxml2 libxslt1.1 curl \
+    && (apt-get install -y --no-install-recommends libavif16 \
+        || apt-get install -y --no-install-recommends libavif15) \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -15,7 +15,9 @@ from app.cutout.cache import CutoutCache
 from app.cutout.runner import CutoutRunner
 from app.progress.pubsub import TaskBus
 from app.progress.queue import CutoutQueue
-from app.routes import cutout, health, process, templates, upload
+from app.routes import config as config_route
+from app.routes import cutout, health, process, search, templates, upload
+from app.runtime_config import RuntimeConfig
 from app.sessions.tmp import SessionStore
 from app.utils.images import register_decoders
 
@@ -48,12 +50,15 @@ async def lifespan(app: FastAPI):
 
     purge_task = asyncio.create_task(sessions.purge_loop(), name="session-purge")
 
+    runtime_cfg = RuntimeConfig(settings.cache_dir / "runtime-config.json")
+
     app.state.settings = settings
     app.state.runner = runner
     app.state.cache = cache
     app.state.bus = bus
     app.state.queue = queue
     app.state.sessions = sessions
+    app.state.runtime_config = runtime_cfg
 
     logger.info("Stickut ready (model=%s, workers=%d)", settings.default_model, settings.effective_workers)
     try:
@@ -99,6 +104,8 @@ def create_app() -> FastAPI:
     app.include_router(process.router, prefix="/api", tags=["process"])
     app.include_router(cutout.router, prefix="/api", tags=["cutout"])
     app.include_router(templates.router, prefix="/api", tags=["templates"])
+    app.include_router(search.router, prefix="/api", tags=["search"])
+    app.include_router(config_route.router, prefix="/api", tags=["config"])
 
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="spa")

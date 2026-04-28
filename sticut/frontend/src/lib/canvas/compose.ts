@@ -7,11 +7,9 @@
  * position scaled into pixels.
  */
 
-import type { PackResult, PlacedSticker } from "./pack";
+import type { ResolvedSticker } from "./placement";
 import { rasterizeSvgToCanvas } from "./svgInject";
 
-const A4_WIDTH_PX = 2480;
-const A4_HEIGHT_PX = 3508;
 const MM_PER_INCH = 25.4;
 const DPI = 300;
 
@@ -25,30 +23,36 @@ export interface ComposeStickerSource {
 }
 
 export interface ComposeOptions {
-  pack: PackResult;
+  /** Dimensions de la feuille en mm. */
+  pageWidthMm: number;
+  pageHeightMm: number;
+  /** Liste des stickers à dessiner, déjà résolue (overrides appliqués). */
+  placed: ResolvedSticker[];
   stickers: ComposeStickerSource[];
   /** Optional pre-injected SVG. Rasterised behind the stickers. */
   frameSvg?: string | null;
 }
 
 export async function composeA4(options: ComposeOptions): Promise<HTMLCanvasElement> {
+  const widthPx = mmToPx(options.pageWidthMm);
+  const heightPx = mmToPx(options.pageHeightMm);
+
   const canvas = document.createElement("canvas");
-  canvas.width = A4_WIDTH_PX;
-  canvas.height = A4_HEIGHT_PX;
+  canvas.width = widthPx;
+  canvas.height = heightPx;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D indisponible");
 
-  // Transparent background by default.
-  ctx.clearRect(0, 0, A4_WIDTH_PX, A4_HEIGHT_PX);
+  ctx.clearRect(0, 0, widthPx, heightPx);
 
   if (options.frameSvg) {
-    const frame = await rasterizeSvgToCanvas(options.frameSvg, A4_WIDTH_PX, A4_HEIGHT_PX);
+    const frame = await rasterizeSvgToCanvas(options.frameSvg, widthPx, heightPx);
     ctx.drawImage(frame, 0, 0);
   }
 
   const byId = new Map(options.stickers.map((s) => [s.id, s.bordered]));
 
-  for (const placed of options.pack.placed) {
+  for (const placed of options.placed) {
     const src = byId.get(placed.id);
     if (!src) continue;
     drawSticker(ctx, src, placed);
@@ -59,23 +63,22 @@ export async function composeA4(options: ComposeOptions): Promise<HTMLCanvasElem
 function drawSticker(
   ctx: CanvasRenderingContext2D,
   src: HTMLCanvasElement | ImageBitmap,
-  placed: PlacedSticker,
+  placed: ResolvedSticker,
 ): void {
   const xPx = mmToPx(placed.xMm);
   const yPx = mmToPx(placed.yMm);
   const wPx = mmToPx(placed.widthMm);
   const hPx = mmToPx(placed.heightMm);
 
-  if (!placed.rotated) {
+  if (!placed.angleDeg) {
     ctx.drawImage(src as CanvasImageSource, xPx, yPx, wPx, hPx);
     return;
   }
-  // 90° CW rotation: the on-page rectangle is (wPx × hPx). The source image
-  // is wider than tall (or vice versa). After rotation, swap.
+  // Rotation arbitraire autour du centre du rectangle (xPx, yPx, wPx, hPx).
   ctx.save();
   ctx.translate(xPx + wPx / 2, yPx + hPx / 2);
-  ctx.rotate(Math.PI / 2);
-  ctx.drawImage(src as CanvasImageSource, -hPx / 2, -wPx / 2, hPx, wPx);
+  ctx.rotate((placed.angleDeg * Math.PI) / 180);
+  ctx.drawImage(src as CanvasImageSource, -wPx / 2, -hPx / 2, wPx, hPx);
   ctx.restore();
 }
 
@@ -85,4 +88,7 @@ export async function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> 
   });
 }
 
-export const A4 = { widthPx: A4_WIDTH_PX, heightPx: A4_HEIGHT_PX, dpi: DPI };
+export const DPI_300 = DPI;
+export function pageDimsPx(pageWidthMm: number, pageHeightMm: number): { widthPx: number; heightPx: number } {
+  return { widthPx: mmToPx(pageWidthMm), heightPx: mmToPx(pageHeightMm) };
+}

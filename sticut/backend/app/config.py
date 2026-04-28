@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535)
     behind_proxy: bool = False
 
+    # Recherche d'images en ligne (off par défaut pour respecter le principe
+    # "no runtime network"). À activer explicitement via STICKUT_ENABLE_SEARCH=true.
+    enable_search: bool = False
+    pixabay_api_key: str = ""  # vide → fallback Openverse (sans clé)
+    search_timeout_seconds: int = Field(default=10, ge=2, le=60)
+
     @property
     def cutouts_dir(self) -> Path:
         return self.cache_dir / "cutouts"
